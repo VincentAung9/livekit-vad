@@ -32,6 +32,35 @@ class SignallingService {
     socket!.connect();
   }
 
+  static Future<void> sendVoiceToServer(
+    List<double> samples,
+    String partnerId,
+    Socket socket,
+  ) async {
+    try {
+      final Uint8List pcmBytes = _floatListToPcm16(samples);
+      final String base64Audio = base64Encode(pcmBytes);
+
+      // ---------------------------------------------------------------
+      // c) Build the payload (exactly what your Node.js expects)
+      // ---------------------------------------------------------------
+      final Map<String, dynamic> payload = {
+        'to': partnerId, // the recipient socket.id
+        'voice': base64Audio,
+        "format": "LINEAR16",
+      };
+
+      // ---------------------------------------------------------------
+      // d) Emit via Socket.IO
+      // ---------------------------------------------------------------
+      socket.emit('voice', payload);
+
+      debugPrint('✅ Sent voice to server');
+    } catch (e, st) {
+      debugPrint('❌ Failed to send audio: $e\n$st');
+    }
+  }
+
   static Future<void> sendAudioToServer(
     List<double> samples,
     String language,

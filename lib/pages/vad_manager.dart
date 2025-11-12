@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' hide ConnectionState;
+import 'package:flutter_sound/flutter_sound.dart';
 import 'package:socket_io_client/socket_io_client.dart';
 import 'package:vad/vad.dart';
 import 'package:vad_example/ui/call_control.dart';
@@ -36,6 +38,8 @@ class _VadManagerState extends State<VadManager> {
   String livekitUrl = "wss://p2p-test-omq0i7wx.livekit.cloud";
   final RTCVideoRenderer localRenderer = RTCVideoRenderer();
   final RTCVideoRenderer remoteRenderer = RTCVideoRenderer();
+  bool isCloseVideo = false;
+  bool isMuteVoice = false;
   Timer? _timer;
   Room? _room;
   EventsListener<RoomEvent>? _listener;
@@ -54,7 +58,7 @@ class _VadManagerState extends State<VadManager> {
 
   // Custom audio stream provider
   CustomAudioStreamProvider? _customAudioProvider;
-
+  FlutterSoundPlayer? _mPlayer = FlutterSoundPlayer();
   @override
   void initState() {
     super.initState();
@@ -62,6 +66,9 @@ class _VadManagerState extends State<VadManager> {
     _initializeVad();
     initializeLivekit();
     socketInit();
+    _mPlayer!.openPlayer().then((value) {
+      debugPrint("🔥 Flutter sound player is initialized");
+    });
   }
 
   void _scrollToBottom() {
@@ -77,6 +84,19 @@ class _VadManagerState extends State<VadManager> {
   }
 
   socketInit() {
+    _socket.on("playVoice", (data) async {
+      debugPrint("✅ Voice received");
+      final Uint8List pcmBytes = base64Decode(data["voice"]);
+      await _mPlayer?.startPlayerFromStream(
+        codec: Codec.pcm16,
+        numChannels: 1,
+        sampleRate: 16000,
+        interleaved: true,
+        bufferSize: 1024,
+        onBufferUnderlow: () => debugPrint("🔥 Buffer underflow!"),
+      );
+      _mPlayer?.uint8ListSink?.add(pcmBytes);
+    });
     _socket.on("sttResult", (data) {
       if (mounted) {
         setState(() {
@@ -254,7 +274,7 @@ class _VadManagerState extends State<VadManager> {
   }
 
   void _setupVadHandler() {
-    _vadHandler.onSpeechStart.listen((_) {
+    _vadHandler.onSpeechStart.listen((_) async {
       if (mounted) {
         setState(() {
           isSpeaking = true;
@@ -279,7 +299,7 @@ class _VadManagerState extends State<VadManager> {
       debugPrint('🔥 Real speech start detected: ${recordings.length}');
     });
 
-    _vadHandler.onSpeechEnd.listen((List<double> samples) {
+    _vadHandler.onSpeechEnd.listen((List<double> samples) async {
       if (mounted) {
         isSpeaking = false;
         setState(() {
@@ -289,9 +309,11 @@ class _VadManagerState extends State<VadManager> {
           ));
         });
       }
-
-      SignallingService.sendAudioToServer(
-          samples, widget.language, widget.partnerId, _socket);
+      if (!isMuteVoice) {
+        SignallingService.sendVoiceToServer(samples, widget.partnerId, _socket);
+        SignallingService.sendAudioToServer(
+            samples, widget.language, widget.partnerId, _socket);
+      }
 
       debugPrint('🔥 Speech ended, recording added. ${samples.length} samples');
     });
@@ -412,18 +434,27 @@ class _VadManagerState extends State<VadManager> {
                         padding: const EdgeInsets.all(8.0),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(12),
-                          child: Builder(builder: (context) {
-                            if (localRenderer.srcObject == null) {
-                              return _infoText("Waiting for participant...");
-                            } else {
-                              return RTCVideoView(
-                                localRenderer,
-                                mirror: true,
-                                objectFit: RTCVideoViewObjectFit
-                                    .RTCVideoViewObjectFitCover,
-                              );
-                            }
-                          }),
+                          child: Builder(
+                            builder: (context) {
+                              final videoTrack = localRenderer.srcObject
+                                  ?.getVideoTracks()
+                                  .first;
+
+                              if (localRenderer.srcObject == null) {
+                                return _infoText("Waiting for participant...");
+                              } else if (videoTrack == null ||
+                                  !videoTrack.enabled) {
+                                return _infoText("Camera is off 🚫");
+                              } else {
+                                return RTCVideoView(
+                                  localRenderer,
+                                  mirror: true,
+                                  objectFit: RTCVideoViewObjectFit
+                                      .RTCVideoViewObjectFitCover,
+                                );
+                              }
+                            },
+                          ),
                         ),
                       ),
                     ),
@@ -510,9 +541,18 @@ class _VadManagerState extends State<VadManager> {
               ),
             ),
 
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 4),
-              child: CallControls(),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: CallControls(
+                isMuteVoice: isMuteVoice,
+                onPressedVoice: () {
+                  if (mounted) {
+                    setState(() {
+                      isMuteVoice = !isMuteVoice;
+                    });
+                  }
+                },
+              ),
             ),
           ],
         ),
@@ -530,7 +570,16 @@ class _VadManagerState extends State<VadManager> {
     _vadHandler.dispose();
     _customAudioProvider?.dispose();
     disposeLivekit();
+    stopPlayer();
+    _mPlayer!.closePlayer();
+    _mPlayer = null;
     super.dispose();
+  }
+
+  Future<void> stopPlayer() async {
+    if (_mPlayer != null) {
+      await _mPlayer!.stopPlayer();
+    }
   }
 
   Widget _infoText(String text) {

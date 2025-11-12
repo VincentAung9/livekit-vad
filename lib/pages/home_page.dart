@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:math';
-
+import 'package:flutter_sound/flutter_sound.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:vad_example/pages/vad_manager.dart';
@@ -26,7 +26,7 @@ class _HomePageState extends State<HomePage> {
   String? livekitToken;
   String livekitUrl = "wss://p2p-test-omq0i7wx.livekit.cloud";
   String websocketUrl =
-      "https://p2p-live-translate-backend-39445099784.europe-west1.run.app"; //"http://192.168.1.33:8080";
+      /* "https://p2p-live-translate-backend-39445099784.europe-west1.run.app"; */ "http://192.168.1.33:8080";
   String tokenUrl =
       "https://p2p-live-translate-backend-39445099784.europe-west1.run.app/getToken";
 

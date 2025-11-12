@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
 
 class CallControls extends StatefulWidget {
-  const CallControls({super.key});
+  final bool isMuteVoice;
+  final void Function() onPressedVoice;
+  const CallControls({
+    super.key,
+    required this.isMuteVoice,
+    required this.onPressedVoice,
+  });
 
   @override
   State<CallControls> createState() => CallControlsState();
@@ -157,6 +163,21 @@ class CallControlsState extends State<CallControls>
                   ),
                   child: const Icon(
                     Icons.call_end,
+                    color: Colors.white,
+                    size: 30,
+                  ),
+                ),
+              ),
+              GestureDetector(
+                onTap: widget.onPressedVoice,
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.amber,
+                  ),
+                  child: Icon(
+                    widget.isMuteVoice ? Icons.mic_off : Icons.mic,
                     color: Colors.white,
                     size: 30,
                   ),
